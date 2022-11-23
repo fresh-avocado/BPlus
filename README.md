@@ -11,4 +11,20 @@ g++ -std=c++2a main.cpp -DALIGNED_MEM -DCACHELINESIZE=`getconf LEVEL1_DCACHE_LIN
 
 ## Notes
 
-This is still a work in progress.
+This is still a work in progress:
+
+### Implemented So Far
+
+- `insert` (key and record)
+- `search`
+- `rangeSearch`
+- `clear` (destructor)
+- _inorder_ keys
+
+### To Be Implemented
+
+- `remove`
+- `ASC` and `DESC` options for the `rangeSearch`
+- _inorder_ iterator
+- _inorder_ records (`ASC` and `DESC`)
+- `search` optimization

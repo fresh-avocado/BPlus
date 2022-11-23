@@ -1,6 +1,6 @@
 #include <iostream>
 
-#include "BPlus.hpp"
+#include "BPlus.cpp"
 
 int main() {
   BPlusTree<5> bplus;
