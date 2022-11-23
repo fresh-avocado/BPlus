@@ -3,6 +3,7 @@
 
 #include <stdlib.h>
 #include <string>
+#include <vector>
 
 #ifndef CACHELINESIZE
 #define CACHELINESIZE 64
@@ -17,10 +18,22 @@
 #define ALLOC_OBJ(objInstance) new objInstance
 #endif
 
+enum class SearchCriteria { GT, GTE, LT, LTE };
+enum class LowerBound { GT, GTE };
+enum class UpperBound { LT, LTE };
+
 struct NodeFlags {
   enum : std::uint8_t {
     isRoot = 1 << 1,
     isLeaf = 1 << 2,
+  };
+};
+struct RangeSearchFlags {
+  enum : std::uint8_t {
+    GT = 1 << 1,
+    GTE = 1 << 2,
+    LT = 1 << 3,
+    LTE = 1 << 4,
   };
 };
 
@@ -29,15 +42,12 @@ class BPlusTree;
 
 template <int degree>
 class Node {
-  // TOOD: encapsular
- public:
   int* keys;
   Node<degree>** children;
   int numKeys = 0;
   uint8_t flags = 0;
   Node<degree>* next = nullptr;
   Node<degree>* prev = nullptr;
-
   Node() {
     keys = ALLOC_MEM(int, degree);
     children = ALLOC_MEM(Node<degree>*, degree + 1);
@@ -68,6 +78,7 @@ class BPlusTree {
     inorder(str);
     return str;
   }
+  // TODO: inorderRecords (ASC, DESC)
   void clear() {
     clear(root);
     delete root;
@@ -84,14 +95,146 @@ class BPlusTree {
     str += "]";
     return str;
   }
-  int search(int k) const { return search(root, k); }
-  void insert(int k) { insert(nullptr, root, k, -1); }
+  // TODO: ASC o DESC
+  std::vector<void*> range(SearchCriteria criteria, int bound) {
+    return rangeSearchHelper(root, bound, criteria);
+  }
+  std::vector<void*> range(LowerBound lowerSearch,
+                           int lowerBound,
+                           UpperBound upperSearch,
+                           int upperBound) {
+    return rangeSearchHelper(root, lowerSearch, lowerBound, upperSearch,
+                             upperBound);
+  }
+  void* search(int k) const { return search(root, k); }
+  void insert(int k, void* record) { insert(nullptr, root, k, record, -1); }
   ~BPlusTree() noexcept { clear(); }
 
  private:
+  std::vector<void*> rangeSearchHelper(Node<degree>* node,
+                                       int bound,
+                                       SearchCriteria criteria) {
+    if (node->flags & NodeFlags::isLeaf) {
+      std::vector<void*> res;
+      int j = 0;
+      if (criteria == SearchCriteria::GT) {
+        while (j < node->numKeys && node->keys[j] <= bound) {
+          j++;
+        }
+        do {
+          while (j < node->numKeys) {
+            res.push_back(node->children[j]);
+            j++;
+          }
+          j = 0;
+          node = node->next;
+        } while (node);
+      } else if (criteria == SearchCriteria::GTE) {
+        while (j < node->numKeys && node->keys[j] < bound) {
+          j++;
+        }
+        do {
+          while (j < node->numKeys) {
+            res.push_back(node->children[j]);
+            j++;
+          }
+          j = 0;
+          node = node->next;
+        } while (node);
+      } else if (criteria == SearchCriteria::LT) {
+        j = node->numKeys - 1;
+        while (j >= 0 && node->keys[j] >= bound) {
+          j--;
+        }
+        do {
+          while (j >= 0) {
+            res.push_back(node->children[j]);
+            j--;
+          }
+          node = node->prev;
+          j = node ? node->numKeys - 1 : 0;
+        } while (node);
+      } else if (criteria == SearchCriteria::LTE) {
+        j = node->numKeys - 1;
+        while (j >= 0 && node->keys[j] > bound) {
+          j--;
+        }
+        do {
+          while (j >= 0) {
+            res.push_back(node->children[j]);
+            j--;
+          }
+          node = node->prev;
+          j = node ? node->numKeys - 1 : 0;
+        } while (node);
+      }
+      return res;
+    } else {
+      int i = 0;
+      while (i < node->numKeys && bound >= node->keys[i]) {
+        i++;
+      }
+      return rangeSearchHelper(node->children[i], bound, criteria);
+    }
+  }
+  std::vector<void*> rangeSearchHelper(Node<degree>* node,
+                                       LowerBound lowerSearch,
+                                       int lowerBound,
+                                       UpperBound upperSearch,
+                                       int upperBound) {
+    if (node->flags & NodeFlags::isLeaf) {
+      int j = 0;
+      if (lowerSearch == LowerBound::GT) {
+        while (j < node->numKeys && node->keys[j] <= lowerBound) {
+          j++;
+        }
+      } else if (lowerSearch == LowerBound::GTE) {
+        while (j < node->numKeys && node->keys[j] < lowerBound) {
+          j++;
+        }
+      }
+      std::vector<void*> res;
+      if (upperSearch == UpperBound::LT) {
+        do {
+          while (j < node->numKeys) {
+            if (node->keys[j] >= upperBound) {
+              goto DONE;
+            }
+            res.push_back(node->children[j]);
+            j++;
+          }
+          j = 0;
+          node = node->next;
+        } while (node);
+      } else if (upperSearch == UpperBound::LTE) {
+        do {
+          while (j < node->numKeys) {
+            if (node->keys[j] > upperBound) {
+              goto DONE;
+            }
+            res.push_back(node->children[j]);
+            j++;
+          }
+          j = 0;
+          node = node->next;
+        } while (node);
+      }
+    DONE:
+      return res;
+    } else {
+      int i = 0;
+      while (i < node->numKeys && lowerBound >= node->keys[i]) {
+        i++;
+      }
+      return rangeSearchHelper(node->children[i], lowerSearch, lowerBound,
+                               upperSearch, upperBound);
+    }
+  }
+
   void insert(Node<degree>* parent,
               Node<degree>* node,
               int k,
+              void* record,
               int parentChildIndex) {
     int i = 0;
     while (i < node->numKeys && k >= node->keys[i]) {
@@ -102,11 +245,15 @@ class BPlusTree {
         node->keys[j] = node->keys[j - 1];
       }
       node->keys[i] = k;
+      node->children[i] = (Node<degree>*)record;
       if (++node->numKeys == degree) {
         int splitPos = degree / 2;
         Node<degree>* newNode = ALLOC_OBJ(Node<degree>(NodeFlags::isLeaf));
+        int pos;
         for (int j = splitPos; j < node->numKeys; j++) {
-          newNode->keys[j - splitPos] = node->keys[j];
+          pos = j - splitPos;
+          newNode->keys[pos] = node->keys[j];
+          newNode->children[pos] = node->children[j];
           newNode->numKeys++;
         }
         node->numKeys = splitPos;
@@ -133,7 +280,7 @@ class BPlusTree {
         }
       }
     } else {
-      insert(node, node->children[i], k, i);
+      insert(node, node->children[i], k, record, i);
       if (node->numKeys == degree) {
         int splitPos = degree / 2;
         Node<degree>* newNode = ALLOC_OBJ(Node<degree>());
@@ -165,13 +312,13 @@ class BPlusTree {
       }
     }
   }
-  int search(Node<degree>* node, int k) const {
+  void* search(Node<degree>* node, int k) const {
     if (node->flags & NodeFlags::isLeaf) {
       for (int i = 0; i < node->numKeys; i++) {
         if (node->keys[i] == k)
-          return k;
+          return (void*)node->children[i];
       }
-      return INT_MIN;
+      return nullptr;
     } else {
       int i = 0;
       while (i < node->numKeys && k >= node->keys[i]) {
