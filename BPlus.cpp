@@ -205,6 +205,7 @@ void BPlusTree<degree>::insert(Node<degree>* parent,
   if (node->flags & NodeFlags::isLeaf) {
     for (int j = node->numKeys; j > i; j--) {
       node->keys[j] = node->keys[j - 1];
+      node->children[j] = node->children[j - 1];
     }
     node->keys[i] = k;
     node->children[i] = (Node<degree>*)record;
