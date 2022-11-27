@@ -5,16 +5,15 @@
 auto measureTime(const char* benchmarkName,
                  const std::function<void(void)>& compute) -> void {
   // NOLINTNEXTLINE
-  std::chrono::high_resolution_clock::time_point start =
-      std::chrono::high_resolution_clock::now();
+  auto start = std::chrono::system_clock::now();
   compute();
   // NOLINTNEXTLINE
-  std::chrono::high_resolution_clock::time_point end =
-      std::chrono::high_resolution_clock::now();
+  auto end = std::chrono::system_clock::now();
 
-  printf("%s took: %lf seconds\n", benchmarkName,
+  printf("%s took: %lf ms\n", benchmarkName,
          std::chrono::duration_cast<std::chrono::duration<double>>(end - start)
-             .count());
+                 .count() *
+             1000.0);
 }
 
 int main() {
